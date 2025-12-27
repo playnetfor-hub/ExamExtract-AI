@@ -1,0 +1,5 @@
+{
+  "name": "ExamExtract AI",
+  "description": "AI-powered tool to extract MCQs from PDF and Word documents into Excel.",
+  "requestFramePermissions": []
+}
