@@ -14,7 +14,6 @@ interface ErrorBoundaryState {
 
 // Error Boundary to catch crashes and prevent "White Page"
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // Explicitly declare state to satisfy strict property initialization and fix "Property 'state' does not exist"
   state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
@@ -57,16 +56,31 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 }
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
+// Safe mount function that waits for DOM
+const mountApp = () => {
+  const rootElement = document.getElementById('root');
+  if (!rootElement) {
+    console.warn("Root element not found, retrying...");
+    setTimeout(mountApp, 50);
+    return;
+  }
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <ErrorBoundary>
-      <App />
-    </ErrorBoundary>
-  </React.StrictMode>
-);
+  // Clear loading indicator
+  rootElement.innerHTML = '';
+
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    </React.StrictMode>
+  );
+};
+
+// Ensure we don't try to render before the body exists
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', mountApp);
+} else {
+  mountApp();
+}

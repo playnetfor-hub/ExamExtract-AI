@@ -2,18 +2,23 @@ import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { DocType } from '../types';
 
-// Handle ESM import inconsistencies (sometimes default export, sometimes named)
-const getDocument = (pdfjsLib as any).getDocument || (pdfjsLib as any).default?.getDocument;
-const pdfVersion = (pdfjsLib as any).version || (pdfjsLib as any).default?.version || '4.8.69';
-const GlobalWorkerOptions = (pdfjsLib as any).GlobalWorkerOptions || (pdfjsLib as any).default?.GlobalWorkerOptions;
+// PDF.js Initialization - Robust handling for ESM environments
+let getDocument: any = null;
 
-// Safely initialize PDF.js worker
 try {
+  // Try to resolve the library in various ways to support different bundlers/ESM environments
+  const lib = pdfjsLib as any;
+  getDocument = lib.getDocument || lib.default?.getDocument;
+  
+  const version = lib.version || lib.default?.version || '4.8.69';
+  const GlobalWorkerOptions = lib.GlobalWorkerOptions || lib.default?.GlobalWorkerOptions;
+
   if (GlobalWorkerOptions) {
-    GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfVersion}/build/pdf.worker.min.mjs`;
+    // Explicitly set the worker source to the same version
+    GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${version}/build/pdf.worker.min.mjs`;
   }
 } catch (e) {
-  console.error("Failed to initialize PDF Worker:", e);
+  console.error("Critical: PDF.js failed to initialize.", e);
 }
 
 export const detectFileType = (file: File): DocType => {
@@ -22,7 +27,7 @@ export const detectFileType = (file: File): DocType => {
   return DocType.UNKNOWN;
 };
 
-// Helper: Process array in batches to avoid memory spikes while maintaining speed
+// Helper: Process array in batches
 async function batchProcess<T, R>(items: T[], batchSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = [];
   for (let i = 0; i < items.length; i += batchSize) {
@@ -35,43 +40,47 @@ async function batchProcess<T, R>(items: T[], batchSize: number, fn: (item: T) =
 
 // Converts a PDF file into an array of Base64 Image strings
 export const processPdfToImages = async (file: File): Promise<string[]> => {
+  if (!getDocument) {
+    throw new Error("PDF processing engine failed to load. Please refresh the page.");
+  }
+
   const arrayBuffer = await file.arrayBuffer();
   
-  // Use the safely resolved getDocument function
-  if (!getDocument) throw new Error("PDF Library failed to load correctly.");
-  
-  const pdf = await getDocument({ data: arrayBuffer }).promise;
-  const numPages = pdf.numPages;
-  
-  const pageIndices = Array.from({ length: numPages }, (_, i) => i + 1);
+  try {
+    const pdf = await getDocument({ data: arrayBuffer }).promise;
+    const numPages = pdf.numPages;
+    const pageIndices = Array.from({ length: numPages }, (_, i) => i + 1);
 
-  const renderPage = async (pageNum: number): Promise<string> => {
-    const page = await pdf.getPage(pageNum);
-    
-    // SCALE: 1.5 is the sweet spot for Gemini Flash
-    const viewport = page.getViewport({ scale: 1.5 }); 
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    
-    if (!context) return '';
+    const renderPage = async (pageNum: number): Promise<string> => {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.5 }); 
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      
+      if (!context) return '';
 
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
 
-    context.fillStyle = '#FFFFFF';
-    context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = '#FFFFFF';
+      context.fillRect(0, 0, canvas.width, canvas.height);
 
-    await page.render({
-      canvasContext: context,
-      viewport: viewport
-    }).promise;
+      await page.render({
+        canvasContext: context,
+        viewport: viewport
+      }).promise;
 
-    const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-    return base64;
-  };
+      // Extract image data
+      const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+      return base64;
+    };
 
-  const images = await batchProcess(pageIndices, 4, renderPage);
-  return images.filter(img => img.length > 0);
+    const images = await batchProcess(pageIndices, 4, renderPage);
+    return images.filter(img => img.length > 0);
+  } catch (err: any) {
+    console.error("PDF Render Error:", err);
+    throw new Error(`Failed to process PDF: ${err.message}`);
+  }
 };
 
 // Chunking helper for HTML content
@@ -100,9 +109,7 @@ const chunkHtmlContent = (html: string, maxChunkSize: number = 30000): string[] 
     }
   }
   
-  if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
-  }
+  if (currentChunk.length > 0) chunks.push(currentChunk);
   
   return chunks;
 };
@@ -110,7 +117,14 @@ const chunkHtmlContent = (html: string, maxChunkSize: number = 30000): string[] 
 // Converts DOCX to an array of base64 encoded HTML chunks
 export const processDocxToHtml = async (file: File): Promise<string[]> => {
   const arrayBuffer = await file.arrayBuffer();
-  // Mammoth usually works fine, but we ensure buffer is polyfilled in index.html
+  
+  // Ensure global Buffer is available (polyfilled in index.html)
+  // Mammoth requires 'Buffer' to be present globally or on window
+  const win = window as any;
+  if (typeof win.Buffer === 'undefined' && typeof win.buffer !== 'undefined') {
+     win.Buffer = win.buffer.Buffer;
+  }
+  
   const result = await mammoth.convertToHtml({ arrayBuffer });
   const rawHtml = result.value;
   const chunks = chunkHtmlContent(rawHtml);
