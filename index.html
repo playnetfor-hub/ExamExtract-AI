@@ -41,9 +41,8 @@
       window.process.env = window.process.env || {};
       window.process.env.NODE_ENV = 'production';
       
-      // NOTE: If you are hosting statically and need to hardcode the API key (not recommended for public repos),
-      // you can uncomment the line below and add your key.
-      // window.process.env.API_KEY = "YOUR_API_KEY_HERE"; 
+      // INJECTED API KEY - As requested
+      window.process.env.API_KEY = "AIzaSyDW_sad7Uhkb4Bbk0U-NR-WdZtPhx7wEQI"; 
 
       if (typeof window.Buffer === 'undefined' && typeof buffer !== 'undefined') {
         window.Buffer = buffer.Buffer;

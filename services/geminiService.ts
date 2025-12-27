@@ -1,6 +1,13 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { McqData, AppLanguage } from '../types';
 
+// Declare process for TypeScript in case it's not picked up globally
+declare var process: {
+  env: {
+    API_KEY?: string;
+  };
+};
+
 // Define the response schema strictly for the model
 const mcqSchema: Schema = {
   type: Type.ARRAY,
@@ -43,24 +50,13 @@ export const analyzeDocumentContent = async (
   mimeType: string,
   language: AppLanguage
 ): Promise<McqData[]> => {
-  // CRITICAL: Robust API Key Retrieval for Browser Environments
-  // We check multiple locations to ensure we find the key if it exists
-  let apiKey: string | undefined = undefined;
-
-  // 1. Check standard process.env (Node/Bundlers)
-  if (typeof process !== 'undefined' && process.env?.API_KEY) {
-    apiKey = process.env.API_KEY;
-  }
-  
-  // 2. Check window.process.env (Browser Polyfill)
-  if (!apiKey && typeof window !== 'undefined') {
-    const win = window as any;
-    apiKey = win.process?.env?.API_KEY;
-  }
+  // Use the standard process.env.API_KEY pattern
+  // This works because we polyfilled 'process' in index.html for the browser
+  const apiKey = process.env.API_KEY;
 
   if (!apiKey) {
-    console.error("Environment Configuration Error: API_KEY is missing from process.env and window.process.env");
-    throw new Error("API Key is missing. Please ensure process.env.API_KEY is configured in your environment.");
+    console.error("Environment Configuration Error: process.env.API_KEY is missing");
+    throw new Error("API Key is missing. Please ensure process.env.API_KEY is configured.");
   }
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
