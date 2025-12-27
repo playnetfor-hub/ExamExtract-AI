@@ -11,26 +11,42 @@ export const detectFileType = (file: File): DocType => {
   return DocType.UNKNOWN;
 };
 
-// Converts a PDF file into an array of Base64 Image strings (one per page)
+// Helper: Process array in batches to avoid memory spikes while maintaining speed
+async function batchProcess<T, R>(items: T[], batchSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+// Converts a PDF file into an array of Base64 Image strings (optimized parallel rendering)
 export const processPdfToImages = async (file: File): Promise<string[]> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const numPages = pdf.numPages;
-  const images: string[] = [];
+  
+  // Create an array of page numbers [1, 2, 3, ...]
+  const pageIndices = Array.from({ length: numPages }, (_, i) => i + 1);
 
-  for (let i = 1; i <= numPages; i++) {
-    const page = await pdf.getPage(i);
-    // Increase scale to 3.0 for better OCR accuracy, especially for Arabic and Math symbols
-    const viewport = page.getViewport({ scale: 3.0 }); 
+  // Render pages in parallel batches of 4.
+  // This is significantly faster than sequential rendering.
+  const renderPage = async (pageNum: number): Promise<string> => {
+    const page = await pdf.getPage(pageNum);
+    
+    // SCALE: 1.5 is the sweet spot for Gemini Flash (readable text, low token count)
+    const viewport = page.getViewport({ scale: 1.5 }); 
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
     
-    if (!context) continue;
+    if (!context) return '';
 
     canvas.height = viewport.height;
     canvas.width = viewport.width;
 
-    // IMPORTANT: Set white background. PDF transparency can turn black in JPEGs, ruining OCR.
+    // White background is crucial for transparency handling
     context.fillStyle = '#FFFFFF';
     context.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -39,12 +55,14 @@ export const processPdfToImages = async (file: File): Promise<string[]> => {
       viewport: viewport
     }).promise;
 
-    // High quality JPEG (0.95) to minimize artifacts while keeping payload reasonable
-    const base64 = canvas.toDataURL('image/jpeg', 0.95).split(',')[1];
-    images.push(base64);
-  }
+    // Quality 0.8 is visually sufficient for OCR but reduces payload size by ~40%
+    const base64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+    return base64;
+  };
 
-  return images;
+  // Process 4 pages at a time
+  const images = await batchProcess(pageIndices, 4, renderPage);
+  return images.filter(img => img.length > 0);
 };
 
 // Chunking helper for HTML content
@@ -52,28 +70,19 @@ const chunkHtmlContent = (html: string, maxChunkSize: number = 30000): string[] 
   if (html.length <= maxChunkSize) return [html];
 
   const chunks: string[] = [];
-  // Split by paragraph end tag to preserve basic structure
   const parts = html.split('</p>');
   
   let currentChunk = '';
   
   for (let i = 0; i < parts.length; i++) {
     let part = parts[i];
-    
-    // Re-attach the closing tag if it wasn't the very last empty split
-    if (i < parts.length - 1) {
-      part += '</p>';
-    }
+    if (i < parts.length - 1) part += '</p>';
 
-    // If adding this paragraph exceeds the limit
     if (currentChunk.length + part.length > maxChunkSize) {
       if (currentChunk.length > 0) {
         chunks.push(currentChunk);
-        // Start new chunk with this part
         currentChunk = part;
       } else {
-        // Edge case: A single paragraph is larger than maxChunkSize. 
-        // We must push it anyway to avoid losing data.
         chunks.push(part);
         currentChunk = '';
       }
@@ -92,14 +101,8 @@ const chunkHtmlContent = (html: string, maxChunkSize: number = 30000): string[] 
 // Converts DOCX to an array of base64 encoded HTML chunks
 export const processDocxToHtml = async (file: File): Promise<string[]> => {
   const arrayBuffer = await file.arrayBuffer();
-  
-  // Convert with standard options. Mammoth is good for text/bold/italics.
-  // Note: Mammoth strips colors by default. Bold/Italic are our best bets for "Correct Answer" in DOCX.
   const result = await mammoth.convertToHtml({ arrayBuffer });
   const rawHtml = result.value;
-  
   const chunks = chunkHtmlContent(rawHtml);
-  
-  // Return base64 encoded chunks
   return chunks.map(chunk => btoa(unescape(encodeURIComponent(chunk))));
 };
