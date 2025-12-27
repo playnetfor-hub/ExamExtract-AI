@@ -43,11 +43,14 @@ export const analyzeDocumentContent = async (
   mimeType: string,
   language: AppLanguage
 ): Promise<McqData[]> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key is missing.");
+  // Safe access to process.env to avoid ReferenceError in non-polyfilled environments
+  const apiKey = typeof process !== 'undefined' ? process.env?.API_KEY : undefined;
+
+  if (!apiKey) {
+    throw new Error("API Key is missing. Please ensure process.env.API_KEY is configured.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: apiKey });
   // Using gemini-3-flash-preview for optimal speed/intelligence ratio for text tasks
   const modelName = 'gemini-3-flash-preview';
 

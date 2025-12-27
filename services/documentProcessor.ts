@@ -2,8 +2,18 @@ import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { DocType } from '../types';
 
-// Set up PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+// Safely initialize PDF.js worker to avoid top-level crashes
+try {
+  // Use specific version or fallback to avoid "undefined" in URL
+  const pdfVersion = pdfjsLib.version || '4.8.69';
+  if (pdfjsLib.GlobalWorkerOptions) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfVersion}/build/pdf.worker.min.mjs`;
+  }
+} catch (e) {
+  console.error("Failed to initialize PDF Worker:", e);
+  // We don't throw here to ensure the app can at least render. 
+  // It will throw when the user actually tries to process a PDF.
+}
 
 export const detectFileType = (file: File): DocType => {
   if (file.type === 'application/pdf') return DocType.PDF;
@@ -32,7 +42,6 @@ export const processPdfToImages = async (file: File): Promise<string[]> => {
   const pageIndices = Array.from({ length: numPages }, (_, i) => i + 1);
 
   // Render pages in parallel batches of 4.
-  // This is significantly faster than sequential rendering.
   const renderPage = async (pageNum: number): Promise<string> => {
     const page = await pdf.getPage(pageNum);
     

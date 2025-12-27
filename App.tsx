@@ -151,7 +151,10 @@ const App: React.FC = () => {
              <span className="hidden md:inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
                 <FileCheck size={14} /> Ready
              </span>
-             <span className="text-xs font-medium text-slate-500">v3.1 Optimized</span>
+             <div className="flex flex-col items-end leading-tight">
+                <span className="text-xs font-bold text-slate-700">v3.1 Optimized</span>
+                <span className="text-[10px] font-medium text-indigo-500 whitespace-nowrap">Designed and developed by Ahmed Khaled 😉</span>
+             </div>
           </div>
         </div>
       </header>
