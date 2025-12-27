@@ -6,10 +6,20 @@
     <meta name="description" content="AI-powered tool to extract MCQs from PDF and Word documents into Excel." />
     <title>ExamExtract AI - Professional Document Analysis</title>
     
-    <!-- Runtime Polyfills for Browser Environment -->
+    <!-- CRITICAL: Runtime Polyfills for Browser Environment -->
+    <!-- These MUST run before module imports to prevent "White Screen" crashes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/buffer/6.0.3/buffer.min.js"></script>
     <script>
-      // Prevents "ReferenceError: process is not defined" which causes White Screen of Death
-      window.process = window.process || { env: {} };
+      // 1. Polyfill 'global' (needed by many React & Node libs)
+      window.global = window;
+      
+      // 2. Polyfill 'process' (needed by React & API clients)
+      window.process = window.process || { env: { NODE_ENV: 'production' } };
+      
+      // 3. Polyfill 'Buffer' (needed by xlsx & mammoth)
+      if (typeof window.Buffer === 'undefined' && typeof buffer !== 'undefined') {
+        window.Buffer = buffer.Buffer;
+      }
     </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
