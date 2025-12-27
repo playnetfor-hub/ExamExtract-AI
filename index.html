@@ -33,9 +33,18 @@
         return false;
       };
 
-      // Polyfills
+      // Polyfills for Node.js environment variables in browser
       window.global = window;
-      window.process = window.process || { env: { NODE_ENV: 'production' } };
+      
+      // Initialize process.env safely
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
+      window.process.env.NODE_ENV = 'production';
+      
+      // NOTE: If you are hosting statically and need to hardcode the API key (not recommended for public repos),
+      // you can uncomment the line below and add your key.
+      // window.process.env.API_KEY = "YOUR_API_KEY_HERE"; 
+
       if (typeof window.Buffer === 'undefined' && typeof buffer !== 'undefined') {
         window.Buffer = buffer.Buffer;
       }

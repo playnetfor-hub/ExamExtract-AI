@@ -43,11 +43,24 @@ export const analyzeDocumentContent = async (
   mimeType: string,
   language: AppLanguage
 ): Promise<McqData[]> => {
-  // Safe access to process.env to avoid ReferenceError in non-polyfilled environments
-  const apiKey = typeof process !== 'undefined' ? process.env?.API_KEY : undefined;
+  // CRITICAL: Robust API Key Retrieval for Browser Environments
+  // We check multiple locations to ensure we find the key if it exists
+  let apiKey: string | undefined = undefined;
+
+  // 1. Check standard process.env (Node/Bundlers)
+  if (typeof process !== 'undefined' && process.env?.API_KEY) {
+    apiKey = process.env.API_KEY;
+  }
+  
+  // 2. Check window.process.env (Browser Polyfill)
+  if (!apiKey && typeof window !== 'undefined') {
+    const win = window as any;
+    apiKey = win.process?.env?.API_KEY;
+  }
 
   if (!apiKey) {
-    throw new Error("API Key is missing. Please ensure process.env.API_KEY is configured.");
+    console.error("Environment Configuration Error: API_KEY is missing from process.env and window.process.env");
+    throw new Error("API Key is missing. Please ensure process.env.API_KEY is configured in your environment.");
   }
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
